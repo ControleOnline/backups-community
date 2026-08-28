@@ -9,7 +9,7 @@ from backups.maintenance_service import run_maintenance
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Rotate logs and prune old backup artifacts")
-    parser.add_argument("config", help="Path to a TOML configuration file")
+    parser.add_argument("config", help="Path to a JSON configuration file")
     args = parser.parse_args(argv)
     try:
         result = run_maintenance(load_config(args.config))

@@ -1,0 +1,32 @@
+{
+  "backup": {
+    "provider": "mysql",
+    "directory": "../backups",
+    "prefix": "controleonline",
+    "compress": true
+  },
+  "source": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "database": "controleonline",
+    "username": "backup",
+    "password_env": "BACKUP_SOURCE_PASSWORD"
+  },
+  "destination": {
+    "host": "127.0.0.1",
+    "port": 3306,
+    "database": "controleonline_restore",
+    "username": "restore",
+    "password_env": "BACKUP_DESTINATION_PASSWORD"
+  },
+  "logging": {
+    "file": "../logs/backups.log",
+    "level": "INFO"
+  },
+  "maintenance": {
+    "backup_retention_days": 30,
+    "log_retention_days": 14,
+    "log_max_bytes": 10485760,
+    "log_keep_files": 5
+  }
+}

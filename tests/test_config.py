@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -7,36 +8,27 @@ from backups.errors import ConfigurationError
 
 
 def _write(path: Path, destination: bool = True) -> None:
-    target = (
-        """
-[destination]
-host = "restore"
-database = "target"
-username = "restore"
-password_env = "DEST_PASSWORD"
-"""
-        if destination
-        else ""
-    )
-    path.write_text(
-        """
-[backup]
-provider = "mysql"
-directory = "artifacts"
-
-[source]
-host = "source"
-database = "app"
-username = "backup"
-password_env = "SOURCE_PASSWORD"
-"""
-        + target,
-        encoding="utf-8",
-    )
+    data = {
+        "backup": {"provider": "mysql", "directory": "artifacts"},
+        "source": {
+            "host": "source",
+            "database": "app",
+            "username": "backup",
+            "password_env": "SOURCE_PASSWORD",
+        },
+    }
+    if destination:
+        data["destination"] = {
+            "host": "restore",
+            "database": "target",
+            "username": "restore",
+            "password_env": "DEST_PASSWORD",
+        }
+    path.write_text(json.dumps(data), encoding="utf-8")
 
 
 def test_loads_source_only_config_and_resolves_relative_path(tmp_path: Path) -> None:
-    path = tmp_path / "backup.toml"
+    path = tmp_path / "backup.json"
     _write(path, destination=False)
     config = load_config(path, {"SOURCE_PASSWORD": "secret"})
     assert config.destination is None
@@ -46,7 +38,7 @@ def test_loads_source_only_config_and_resolves_relative_path(tmp_path: Path) -> 
 
 
 def test_loads_destination_from_environment(tmp_path: Path) -> None:
-    path = tmp_path / "backup.toml"
+    path = tmp_path / "backup.json"
     _write(path)
     config = load_config(path, {"SOURCE_PASSWORD": "one", "DEST_PASSWORD": "two"})
     assert config.destination is not None
@@ -55,7 +47,21 @@ def test_loads_destination_from_environment(tmp_path: Path) -> None:
 
 
 def test_rejects_missing_password_environment_variable(tmp_path: Path) -> None:
-    path = tmp_path / "backup.toml"
+    path = tmp_path / "backup.json"
     _write(path, destination=False)
     with pytest.raises(ConfigurationError, match="source.password"):
         load_config(path, {})
+
+
+def test_rejects_invalid_json(tmp_path: Path) -> None:
+    path = tmp_path / "backup.json"
+    path.write_text("{invalid", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="Invalid JSON configuration"):
+        load_config(path)
+
+
+def test_rejects_non_object_json_root(tmp_path: Path) -> None:
+    path = tmp_path / "backup.json"
+    path.write_text("[]", encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="root must be an object"):
+        load_config(path)

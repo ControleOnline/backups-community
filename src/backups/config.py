@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import json
 import os
-import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -21,10 +21,12 @@ def load_config(path: str | Path, environ: Mapping[str, str] | None = None) -> A
     if not config_path.is_file():
         raise ConfigurationError(f"Configuration file not found: {config_path}")
     try:
-        with config_path.open("rb") as handle:
-            data = tomllib.load(handle)
-    except tomllib.TOMLDecodeError as exc:
-        raise ConfigurationError(f"Invalid TOML configuration: {exc}") from exc
+        with config_path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except json.JSONDecodeError as exc:
+        raise ConfigurationError(f"Invalid JSON configuration: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ConfigurationError("JSON configuration root must be an object")
 
     env = os.environ if environ is None else environ
     base = config_path.parent
@@ -83,13 +85,13 @@ def _database(data: Mapping[str, Any], env: Mapping[str, str], name: str) -> Dat
 
 def _section(data: Mapping[str, Any], name: str) -> Mapping[str, Any]:
     if name not in data:
-        raise ConfigurationError(f"Missing [{name}] section")
+        raise ConfigurationError(f"Missing '{name}' object")
     return _mapping(data[name], name)
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:
     if not isinstance(value, dict):
-        raise ConfigurationError(f"[{name}] must be a table")
+        raise ConfigurationError(f"'{name}' must be an object")
     return value
 
 

@@ -12,7 +12,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run the backup workflow from a configuration file"
     )
-    parser.add_argument("config", help="Path to a TOML configuration file")
+    parser.add_argument("config", help="Path to a JSON configuration file")
     return parser
 
 
