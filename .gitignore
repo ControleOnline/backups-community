@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+*.egg-info/
+
+# Runtime configuration and credentials live locally and must never be committed.
+.env
+.env.*
+!.env.example
+config/*.toml
+!config/.gitkeep
+
+# Backup artifacts, logs, and transient process state are runtime data.
+/backups/
+logs/
+runtime/
+*.sql
+*.sql.gz
