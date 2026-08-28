@@ -45,6 +45,37 @@ def test_loads_destination_from_environment(tmp_path: Path) -> None:
     assert config.destination.database == "target"
     assert config.destination.password == "two"
     assert config.destination.restore.strategy == "direct"
+    assert config.destinations == (config.destination,)
+
+
+def test_loads_multiple_destinations(tmp_path: Path) -> None:
+    path = tmp_path / "backup.json"
+    _write(path, destination=False)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["destinations"] = [
+        {
+            "host": "restore",
+            "database": "staging",
+            "username": "restore",
+            "password": "one",
+        },
+        {
+            "host": "restore",
+            "database": "dev",
+            "username": "restore",
+            "password": "two",
+            "restore_strategy": "validated_swap",
+            "candidate_database_pattern": "{destination.database}_{timestamp}",
+        },
+    ]
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    config = load_config(path, {"SOURCE_PASSWORD": "secret"})
+
+    assert config.destination is not None
+    assert config.destination.database == "staging"
+    assert [destination.database for destination in config.destinations] == ["staging", "dev"]
+    assert config.destinations[1].restore.strategy == "validated_swap"
 
 
 def test_rejects_missing_password_environment_variable(tmp_path: Path) -> None:

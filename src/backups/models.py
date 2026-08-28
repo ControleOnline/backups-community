@@ -70,3 +70,4 @@ class AppConfig:
     pre_restore_commands: tuple[CommandConfig, ...]
     post_restore_commands: tuple[CommandConfig, ...]
     post_backup_commands: tuple[CommandConfig, ...]
+    destinations: tuple[DestinationConfig, ...] = ()

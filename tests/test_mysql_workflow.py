@@ -103,6 +103,47 @@ def test_direct_strategy_keeps_existing_backup_restore_order(app_config, tmp_pat
     ]
 
 
+def test_multiple_destinations_reuse_the_same_backup_artifact(app_config, tmp_path: Path) -> None:
+    provider = FakeProvider()
+    commands = FakeCommandRunner()
+    first = _config(app_config, tmp_path).destination
+    second = replace(first, database="frethical_dev")
+    config = replace(
+        app_config,
+        destination=first,
+        destinations=(first, second),
+        pre_backup_commands=(_command("pre_backup", tmp_path),),
+        pre_restore_commands=(_command("pre_restore", tmp_path),),
+        post_restore_commands=(_command("post_restore", tmp_path),),
+        post_backup_commands=(_command("post_backup", tmp_path),),
+    )
+
+    MySQLWorkflow(provider, commands).run(config, NOW)  # type: ignore[arg-type]
+
+    assert provider.events == [
+        "backup:source_db",
+        "restore:frethical_staging:rewrite=None",
+        "restore:frethical_dev:rewrite=None",
+    ]
+    assert commands.events == [
+        "command:pre_backup",
+        "command:pre_restore",
+        "command:post_restore",
+        "command:post_backup",
+        "command:pre_restore",
+        "command:post_restore",
+        "command:post_backup",
+    ]
+    assert [variables["destination.database"] for variables in commands.variables[1:]] == [
+        "frethical_staging",
+        "frethical_staging",
+        "frethical_staging",
+        "frethical_dev",
+        "frethical_dev",
+        "frethical_dev",
+    ]
+
+
 def test_validated_swap_promotes_only_after_validation(app_config, tmp_path: Path) -> None:
     timeline: list[str] = []
     provider = FakeProvider(timeline)
@@ -186,7 +227,7 @@ def test_validated_swap_templates_include_candidate_artifact_and_databases(
 
     MySQLWorkflow(provider, commands).run(config, NOW)  # type: ignore[arg-type]
 
-    assert commands.variables[0] == {
+    assert commands.variables[1] == {
         "source.database": "source_db",
         "destination.database": "frethical_staging",
         "candidate.database": "frethical_staging_restore_20260828T040000Z",

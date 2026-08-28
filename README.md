@@ -27,10 +27,12 @@ passwords in that local JSON file:
 cp examples/mysql.json config/production.json
 ```
 
-The `destination` object is optional. When it is absent, the workflow only
-creates a backup. When it is present, the workflow creates the backup and then
-restores that newly created artifact using the configured restore strategy.
-Paths in the JSON file are resolved relative to that file.
+The `destination` object is optional. Use `destinations` when the same source
+dump must be restored into more than one target database. When no destination is
+configured, the workflow only creates a backup. When one or more destinations
+are present, the workflow creates one backup artifact and restores that same
+artifact into each destination using its configured restore strategy. Paths in
+the JSON file are resolved relative to that file.
 
 ## Run
 
@@ -41,8 +43,9 @@ come from that file:
 python backup.py config/production.json
 ```
 
-The timestamped artifact name is generated internally. When `destination` is
-configured, that exact artifact is restored without a dynamic shell argument.
+The timestamped artifact name is generated internally. When `destination` or
+`destinations` is configured, that exact artifact is restored without a dynamic
+shell argument.
 
 To run every configured backup in one cron entry, omit the JSON argument:
 
@@ -76,8 +79,8 @@ The workflow accepts command hooks in four stages:
 - `pre_restore.commands`: before restoring into the configured target.
 - `post_restore.commands`: after restore and before promotion when using
   `validated_swap`.
-- `post_backup.commands`: after the backup round finishes, including promotion
-  when configured.
+- `post_backup.commands`: after each destination restore, including promotion
+  when configured. With no destination, it runs once after the dump.
 
 Commands are argument arrays and are executed directly, without a shell:
 
@@ -113,7 +116,8 @@ environment values, and candidate database names:
 ## Restore strategies
 
 `destination.restore_strategy` defaults to `direct`, which restores the newly
-created backup directly into `destination.database`.
+created backup directly into the configured destination database. The same
+setting is accepted by every item in `destinations`.
 
 Use `validated_swap` when the destination must not be touched until the restored
 data has been validated. The workflow:
@@ -127,10 +131,11 @@ data has been validated. The workflow:
 6. drops the candidate in a `finally` block when `drop_candidate_on_exit` is
    true.
 
-For Frethical-style staging refreshes, see `examples/mysql.json`. The example
-refreshes `gestaoTechlog` into `frethical_staging` through
-`frethical_staging_restore_{timestamp}`, validates required objects, then runs
-commands such as password updates and Doctrine migrations with no shell wrapper.
+For Frethical-style refreshes, see `examples/mysql.json`. The example creates a
+single dump from `gestaoTechlog` and restores it into `frethical_staging` and
+`frethical_dev` through validated candidate databases, validates required
+objects, then runs commands such as password updates and Doctrine migrations
+with no shell wrapper.
 
 ## Scheduling
 

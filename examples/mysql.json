@@ -12,25 +12,46 @@
     "username": "backup",
     "password": "change-me"
   },
-  "destination": {
-    "host": "127.0.0.1",
-    "port": 3306,
-    "database": "frethical_staging",
-    "username": "restore",
-    "password": "change-me",
-    "restore_strategy": "validated_swap",
-    "candidate_database_pattern": "{destination.database}_restore_{timestamp}",
-    "drop_candidate_on_exit": true,
-    "drop_destination_before_promote": true,
-    "create_destination_before_promote": true,
-    "required_tables": [
-      "whatsapp",
-      "whatsapp_template",
-      "doctrine_migration_versions"
-    ],
-    "compare_source_objects": true,
-    "rewrite_view_schema_references": true
-  },
+  "destinations": [
+    {
+      "host": "127.0.0.1",
+      "port": 3306,
+      "database": "frethical_staging",
+      "username": "restore",
+      "password": "change-me",
+      "restore_strategy": "validated_swap",
+      "candidate_database_pattern": "{destination.database}_restore_{timestamp}",
+      "drop_candidate_on_exit": true,
+      "drop_destination_before_promote": true,
+      "create_destination_before_promote": true,
+      "required_tables": [
+        "whatsapp",
+        "whatsapp_template",
+        "doctrine_migration_versions"
+      ],
+      "compare_source_objects": true,
+      "rewrite_view_schema_references": true
+    },
+    {
+      "host": "127.0.0.1",
+      "port": 3306,
+      "database": "frethical_dev",
+      "username": "restore",
+      "password": "change-me",
+      "restore_strategy": "validated_swap",
+      "candidate_database_pattern": "{destination.database}_restore_{timestamp}",
+      "drop_candidate_on_exit": true,
+      "drop_destination_before_promote": true,
+      "create_destination_before_promote": true,
+      "required_tables": [
+        "whatsapp",
+        "whatsapp_template",
+        "doctrine_migration_versions"
+      ],
+      "compare_source_objects": true,
+      "rewrite_view_schema_references": true
+    }
+  ],
   "pre_backup": {
     "commands": []
   },

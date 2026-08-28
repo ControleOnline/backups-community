@@ -20,34 +20,44 @@ class MySQLWorkflow:
 
     def run(self, config: AppConfig, timestamp: datetime) -> Path:
         artifact = self.provider.artifact_path(config.source, config.backup, timestamp)
-        candidate = self._candidate(config, timestamp)
-        variables = _variables(config, candidate, artifact, timestamp)
+        variables = _variables(config, None, artifact, timestamp)
         self.command_runner.run(config.pre_backup_commands, variables)
         artifact = self.provider.backup(config.source, config.backup, timestamp)
-        if config.destination is not None:
-            if config.destination.restore.strategy == "validated_swap":
-                assert candidate is not None
-                self._validated_swap(config, candidate, artifact, variables)
-            else:
-                self._direct(config, artifact, variables)
-        self.command_runner.run(config.post_backup_commands, variables)
+        destinations = config.destinations or ((config.destination,) if config.destination else ())
+        if destinations:
+            for destination in destinations:
+                assert destination is not None
+                candidate = self._candidate(config, destination, timestamp)
+                variables = _variables(config, candidate, artifact, timestamp, destination)
+                if destination.restore.strategy == "validated_swap":
+                    assert candidate is not None
+                    self._validated_swap(config, destination, candidate, artifact, variables)
+                else:
+                    self._direct(config, destination, artifact, variables)
+                self.command_runner.run(config.post_backup_commands, variables)
+        else:
+            self.command_runner.run(config.post_backup_commands, variables)
         return artifact
 
-    def _direct(self, config: AppConfig, artifact: Path, variables: dict[str, str]) -> None:
-        assert config.destination is not None
+    def _direct(
+        self,
+        config: AppConfig,
+        destination: DestinationConfig,
+        artifact: Path,
+        variables: dict[str, str],
+    ) -> None:
         self.command_runner.run(config.pre_restore_commands, variables)
-        self.provider.restore(config.destination, artifact)
+        self.provider.restore(destination, artifact)
         self.command_runner.run(config.post_restore_commands, variables)
 
     def _validated_swap(
         self,
         config: AppConfig,
+        destination: DestinationConfig,
         candidate: DatabaseConfig,
         artifact: Path,
         variables: dict[str, str],
     ) -> None:
-        destination = config.destination
-        assert destination is not None
         candidate_created = False
         promotion_artifact = None
         primary_error = None
@@ -108,9 +118,13 @@ class MySQLWorkflow:
                     f"missing={missing_objects}, extra={extra_objects}"
                 )
 
-    def _candidate(self, config: AppConfig, timestamp: datetime) -> DatabaseConfig | None:
-        destination = config.destination
-        if destination is None or destination.restore.strategy != "validated_swap":
+    def _candidate(
+        self,
+        config: AppConfig,
+        destination: DestinationConfig,
+        timestamp: datetime,
+    ) -> DatabaseConfig | None:
+        if destination.restore.strategy != "validated_swap":
             return None
         variables = {
             "database": destination.database,
@@ -140,13 +154,16 @@ def _variables(
     candidate: DatabaseConfig | None,
     artifact: Path,
     timestamp: datetime,
+    destination: DestinationConfig | None = None,
 ) -> dict[str, str]:
     variables = {
         "source.database": config.source.database,
         "artifact": str(artifact),
         "timestamp": normalize_timestamp(timestamp),
     }
-    if config.destination is not None:
+    if destination is not None:
+        variables["destination.database"] = destination.database
+    elif config.destination is not None:
         variables["destination.database"] = config.destination.database
     if candidate is not None:
         variables["candidate.database"] = candidate.database

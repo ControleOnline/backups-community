@@ -42,7 +42,7 @@ def load_config_data(
     base_path = Path(base).expanduser().resolve()
     backup_data = _section(data, "backup")
     source = _database(_section(data, "source"), env, "source")
-    destination_data = data.get("destination")
+    destinations = _destinations(data, env)
     provider = _text(backup_data, "provider", "backup")
     prefix = str(backup_data.get("prefix") or source.database)
     if not prefix or any(char in prefix for char in "/\\"):
@@ -52,9 +52,7 @@ def load_config_data(
     maintenance_data = _mapping(data.get("maintenance", {}), "maintenance")
     return AppConfig(
         source=source,
-        destination=_destination(_mapping(destination_data, "destination"), env)
-        if destination_data is not None
-        else None,
+        destination=destinations[0] if destinations else None,
         backup=BackupSettings(
             provider=provider.lower(),
             directory=_path(base_path, backup_data.get("directory", "../backups")),
@@ -75,6 +73,7 @@ def load_config_data(
         pre_restore_commands=commands(data, "pre_restore", base_path),
         post_restore_commands=commands(data, "post_restore", base_path),
         post_backup_commands=commands(data, "post_backup", base_path),
+        destinations=destinations,
     )
 
 
@@ -127,6 +126,19 @@ def _destination(data: Mapping[str, Any], env: Mapping[str, str]) -> Destination
             rewrite_view_schema_references=_boolean(data, "rewrite_view_schema_references", False),
         ),
     )
+
+
+def _destinations(data: Mapping[str, Any], env: Mapping[str, str]) -> tuple[DestinationConfig, ...]:
+    destinations = []
+    if data.get("destination") is not None:
+        destinations.append(_destination(_mapping(data["destination"], "destination"), env))
+    if data.get("destinations") is not None:
+        values = data["destinations"]
+        if not isinstance(values, list):
+            raise ConfigurationError("destinations must be an array")
+        for index, value in enumerate(values):
+            destinations.append(_destination(_mapping(value, f"destinations[{index}]"), env))
+    return tuple(destinations)
 
 
 def _section(data: Mapping[str, Any], name: str) -> Mapping[str, Any]:
