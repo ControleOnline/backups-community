@@ -74,10 +74,10 @@ class MySQLProvider(BackupProvider):
         self, admin: DatabaseConfig, database: str, if_not_exists: bool = False
     ) -> None:
         clause = " IF NOT EXISTS" if if_not_exists else ""
-        self._query(admin, f"CREATE DATABASE{clause} {_identifier(database)};")
+        self.query(admin, f"CREATE DATABASE{clause} {_identifier(database)};")
 
     def drop_database(self, admin: DatabaseConfig, database: str) -> None:
-        self._query(admin, f"DROP DATABASE IF EXISTS {_identifier(database)};")
+        self.query(admin, f"DROP DATABASE IF EXISTS {_identifier(database)};")
 
     def objects(self, database: DatabaseConfig) -> set[tuple[str, str]]:
         statement = (
