@@ -11,7 +11,8 @@ database = "controleonline"
 username = "backup"
 password_env = "BACKUP_SOURCE_PASSWORD"
 
-# Remove this entire section on backup-only installations.
+# Remove this entire section to create backups without restoring them.
+# When present, the artifact created from [source] is restored here immediately.
 [destination]
 host = "127.0.0.1"
 port = 3306

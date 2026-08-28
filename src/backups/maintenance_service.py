@@ -14,14 +14,21 @@ class MaintenanceResult:
 
 def run_maintenance(config: AppConfig, now: float | None = None) -> MaintenanceResult:
     current_time = time.time() if now is None else now
-    rotated = rotate_log(config.logging.file, config.maintenance.log_max_bytes,
-                         config.maintenance.log_keep_files)
-    backups = prune_old_files(config.backup.directory,
-                              config.maintenance.backup_retention_days,
-                              current_time, f"{config.backup.prefix}_*.sql*")
-    logs = prune_old_files(config.logging.file.parent,
-                           config.maintenance.log_retention_days,
-                           current_time, f"{config.logging.file.name}.*")
+    rotated = rotate_log(
+        config.logging.file, config.maintenance.log_max_bytes, config.maintenance.log_keep_files
+    )
+    backups = prune_old_files(
+        config.backup.directory,
+        config.maintenance.backup_retention_days,
+        current_time,
+        f"{config.backup.prefix}_*.sql*",
+    )
+    logs = prune_old_files(
+        config.logging.file.parent,
+        config.maintenance.log_retention_days,
+        current_time,
+        f"{config.logging.file.name}.*",
+    )
     return MaintenanceResult(backups, logs, rotated)
 
 

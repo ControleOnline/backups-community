@@ -1,36 +1,31 @@
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from backups.errors import BackupError
 from backups.models import AppConfig
 from backups.providers.base import BackupProvider
 from backups.providers.registry import get_provider
 
 
 class BackupService:
-    def __init__(self, config: AppConfig, provider: BackupProvider | None = None,
-                 clock: Callable[[], datetime] | None = None) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        provider: BackupProvider | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         self.config = config
         self.provider = provider or get_provider(config.backup.provider)
-        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.clock = clock or (lambda: datetime.now(UTC))
 
     def backup(self) -> Path:
         return self.provider.backup(self.config.source, self.config.backup, self.clock())
 
-    def restore(self, artifact: Path | None = None, latest: bool = False) -> Path:
-        if self.config.destination is None:
-            raise BackupError("Restore requires a [destination] configuration")
-        selected = self.latest_artifact() if latest else artifact
-        if selected is None:
-            raise BackupError("Restore requires --artifact or --latest")
-        selected = selected.expanduser().resolve()
-        self.provider.restore(self.config.destination, selected)
-        return selected
-
-    def latest_artifact(self) -> Path:
-        pattern = f"{self.config.backup.prefix}_*.sql*"
-        candidates = [path for path in self.config.backup.directory.glob(pattern) if path.is_file()]
-        if not candidates:
-            raise BackupError(f"No backup artifact matches {pattern}")
-        return max(candidates, key=lambda path: (path.stat().st_mtime_ns, path.name))
+    def run(self) -> Path:
+        artifact = self.backup()
+        if self.config.destination is not None:
+            # Business rule: a configured destination turns the same invocation
+            # into a backup-and-restore workflow. The freshly created artifact is
+            # passed internally so cron never needs to predict its timestamped name.
+            self.provider.restore(self.config.destination, artifact)
+        return artifact
