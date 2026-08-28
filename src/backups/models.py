@@ -36,9 +36,17 @@ class MaintenanceSettings:
 
 
 @dataclass(frozen=True)
+class PostBackupCommand:
+    arguments: tuple[str, ...]
+    directory: Path
+    environment: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
 class AppConfig:
     source: DatabaseConfig
     destination: DatabaseConfig | None
     backup: BackupSettings
     logging: LoggingSettings
     maintenance: MaintenanceSettings
+    post_backup_commands: tuple[PostBackupCommand, ...]

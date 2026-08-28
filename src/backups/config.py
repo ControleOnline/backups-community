@@ -13,6 +13,7 @@ from backups.models import (
     DatabaseConfig,
     LoggingSettings,
     MaintenanceSettings,
+    PostBackupCommand,
 )
 
 
@@ -40,6 +41,7 @@ def load_config(path: str | Path, environ: Mapping[str, str] | None = None) -> A
 
     logging_data = _mapping(data.get("logging", {}), "logging")
     maintenance_data = _mapping(data.get("maintenance", {}), "maintenance")
+    post_backup_data = _mapping(data.get("post_backup", {}), "post_backup")
     return AppConfig(
         source=source,
         destination=_database(_mapping(destination_data, "destination"), env, "destination")
@@ -61,6 +63,7 @@ def load_config(path: str | Path, environ: Mapping[str, str] | None = None) -> A
             log_max_bytes=_non_negative(maintenance_data, "log_max_bytes", 10 * 1024 * 1024),
             log_keep_files=_non_negative(maintenance_data, "log_keep_files", 5),
         ),
+        post_backup_commands=_post_backup_commands(post_backup_data, base),
     )
 
 
@@ -112,3 +115,40 @@ def _non_negative(data: Mapping[str, Any], key: str, default: int) -> int:
     if not isinstance(value, int) or value < 0:
         raise ConfigurationError(f"maintenance.{key} must be a non-negative integer")
     return value
+
+
+def _post_backup_commands(data: Mapping[str, Any], base: Path) -> tuple[PostBackupCommand, ...]:
+    commands = data.get("commands", [])
+    if not isinstance(commands, list):
+        raise ConfigurationError("post_backup.commands must be an array")
+    parsed = []
+    for index, value in enumerate(commands):
+        if not isinstance(value, dict):
+            raise ConfigurationError(f"post_backup.commands[{index}] must be an object")
+        arguments = value.get("command")
+        if (
+            not isinstance(arguments, list)
+            or not arguments
+            or any(not isinstance(argument, str) or not argument for argument in arguments)
+        ):
+            raise ConfigurationError(
+                f"post_backup.commands[{index}].command must be a non-empty string array"
+            )
+        environment = _mapping(
+            value.get("environment", {}), f"post_backup.commands[{index}].environment"
+        )
+        if any(
+            not isinstance(key, str) or not isinstance(item, str)
+            for key, item in environment.items()
+        ):
+            raise ConfigurationError(
+                f"post_backup.commands[{index}].environment must contain string values"
+            )
+        parsed.append(
+            PostBackupCommand(
+                arguments=tuple(arguments),
+                directory=_path(base, value.get("directory", ".")),
+                environment=tuple(environment.items()),
+            )
+        )
+    return tuple(parsed)

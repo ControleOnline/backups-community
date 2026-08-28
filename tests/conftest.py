@@ -19,4 +19,5 @@ def app_config(tmp_path: Path) -> AppConfig:
         backup=BackupSettings("mysql", tmp_path / "backups", "source_db", True),
         logging=LoggingSettings(tmp_path / "logs" / "backups.log", "INFO"),
         maintenance=MaintenanceSettings(30, 14, 1024, 3),
+        post_backup_commands=(),
     )

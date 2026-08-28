@@ -65,3 +65,38 @@ def test_rejects_non_object_json_root(tmp_path: Path) -> None:
     path.write_text("[]", encoding="utf-8")
     with pytest.raises(ConfigurationError, match="root must be an object"):
         load_config(path)
+
+
+def test_loads_post_backup_commands_relative_to_config(tmp_path: Path) -> None:
+    path = tmp_path / "backup.json"
+    _write(path, destination=False)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["post_backup"] = {
+        "commands": [
+            {
+                "command": ["php", "bin/console", "doctrine:migrations:migrate"],
+                "directory": "../api",
+                "environment": {"APP_ENV": "staging"},
+            }
+        ]
+    }
+    path.write_text(json.dumps(data), encoding="utf-8")
+    config = load_config(path, {"SOURCE_PASSWORD": "secret"})
+    command = config.post_backup_commands[0]
+    assert command.arguments == ("php", "bin/console", "doctrine:migrations:migrate")
+    assert command.directory == tmp_path.parent / "api"
+    assert command.environment == (("APP_ENV", "staging"),)
+
+
+@pytest.mark.parametrize(
+    "commands",
+    ["invalid", [{}], [{"command": []}], [{"command": ["ok"], "environment": {"A": 1}}]],
+)
+def test_rejects_invalid_post_backup_commands(tmp_path: Path, commands: object) -> None:
+    path = tmp_path / "backup.json"
+    _write(path, destination=False)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["post_backup"] = {"commands": commands}
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ConfigurationError, match="post_backup.commands"):
+        load_config(path, {"SOURCE_PASSWORD": "secret"})
