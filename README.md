@@ -29,28 +29,28 @@ export BACKUP_SOURCE_PASSWORD='source-secret'
 export BACKUP_DESTINATION_PASSWORD='destination-secret'
 ```
 
-The `[destination]` section is optional for backup-only installations. It is
-required for restore operations. Paths in the TOML file are resolved relative
-to that file.
+The `[destination]` section is optional. When it is absent, the workflow only
+creates a backup. When it is present, the workflow creates the backup and then
+restores that newly created artifact into the configured destination. Paths in
+the TOML file are resolved relative to that file.
 
 ## Run
 
-The root command receives the configuration file as its first argument:
+The root command receives only the configuration file. All operational values
+come from that file:
 
 ```bash
-python backup.py config/production.toml backup
-python backup.py config/production.toml restore --artifact backups/mydb_20260828T120000Z.sql.gz
-python backup.py config/production.toml restore --latest
+python backup.py config/production.toml
 python maintenance.py config/production.toml
 ```
 
-`restore --latest` selects the newest artifact matching the configured prefix.
-The command refuses to restore when no destination database is configured.
+The timestamped artifact name is generated internally. When `[destination]` is
+configured, that exact artifact is restored without a dynamic shell argument.
 
 ## Scheduling
 
 ```cron
-0 2 * * * cd /opt/backups-community && /usr/bin/python3 backup.py config/production.toml backup
+0 2 * * * cd /opt/backups-community && /usr/bin/python3 backup.py config/production.toml
 30 3 * * * cd /opt/backups-community && /usr/bin/python3 maintenance.py config/production.toml
 ```
 

@@ -13,4 +13,6 @@ def get_provider(name: str) -> BackupProvider:
         return PROVIDERS[name]()
     except KeyError as exc:
         supported = ", ".join(sorted(PROVIDERS))
-        raise ConfigurationError(f"Unsupported backup provider '{name}'. Supported: {supported}") from exc
+        raise ConfigurationError(
+            f"Unsupported backup provider '{name}'. Supported: {supported}"
+        ) from exc

@@ -7,7 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from backups.errors import ConfigurationError
-from backups.models import AppConfig, BackupSettings, DatabaseConfig, LoggingSettings, MaintenanceSettings
+from backups.models import (
+    AppConfig,
+    BackupSettings,
+    DatabaseConfig,
+    LoggingSettings,
+    MaintenanceSettings,
+)
 
 
 def load_config(path: str | Path, environ: Mapping[str, str] | None = None) -> AppConfig:
@@ -35,7 +41,8 @@ def load_config(path: str | Path, environ: Mapping[str, str] | None = None) -> A
     return AppConfig(
         source=source,
         destination=_database(_mapping(destination_data, "destination"), env, "destination")
-        if destination_data is not None else None,
+        if destination_data is not None
+        else None,
         backup=BackupSettings(
             provider=provider.lower(),
             directory=_path(base, backup_data.get("directory", "../backups")),
@@ -66,9 +73,11 @@ def _database(data: Mapping[str, Any], env: Mapping[str, str], name: str) -> Dat
     if not isinstance(port, int) or not 1 <= port <= 65535:
         raise ConfigurationError(f"{name}.port must be between 1 and 65535")
     return DatabaseConfig(
-        host=_text(data, "host", name), port=port,
+        host=_text(data, "host", name),
+        port=port,
         database=_text(data, "database", name),
-        username=_text(data, "username", name), password=str(password),
+        username=_text(data, "username", name),
+        password=str(password),
     )
 
 
