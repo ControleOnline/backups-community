@@ -25,13 +25,4 @@ class BackupService:
         return self.provider.backup(self.config.source, self.config.backup, self.clock())
 
     def run(self) -> Path:
-        artifact = self.backup()
-        if self.config.destination is not None:
-            # Business rule: a configured destination turns the same invocation
-            # into a backup-and-restore workflow. The freshly created artifact is
-            # passed internally so cron never needs to predict its timestamped name.
-            self.provider.restore(self.config.destination, artifact)
-        # Business rule: hooks run only after the backup and optional restore have
-        # completed, so migrations and environment cleanup operate on restored data.
-        self.post_backup_runner.run(self.config.post_backup_commands)
-        return artifact
+        return self.provider.run(self.config, self.clock(), self.post_backup_runner)

@@ -42,6 +42,20 @@ class ProcessRunner:
             if return_code:
                 raise ProcessError(_process_message("mysql", return_code, errors))
 
+    def query(self, command: list[str], statement: str) -> list[tuple[str, ...]]:
+        with tempfile.TemporaryFile() as errors:
+            process = subprocess.run(
+                command,
+                input=statement.encode("utf-8"),
+                stdout=subprocess.PIPE,
+                stderr=errors,
+                check=False,
+            )
+            if process.returncode:
+                raise ProcessError(_process_message("mysql", process.returncode, errors))
+        output = process.stdout.decode("utf-8", errors="strict")
+        return [tuple(line.split("\t")) for line in output.splitlines() if line]
+
 
 def _writer(path: Path, compressed: bool) -> BinaryIO:
     return gzip.open(path, "wb") if compressed else path.open("wb")

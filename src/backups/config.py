@@ -6,14 +6,16 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from backups.command_config import commands
 from backups.errors import ConfigurationError
 from backups.models import (
     AppConfig,
     BackupSettings,
     DatabaseConfig,
+    DestinationConfig,
     LoggingSettings,
     MaintenanceSettings,
-    PostBackupCommand,
+    RestoreSettings,
 )
 
 
@@ -28,9 +30,16 @@ def load_config(path: str | Path, environ: Mapping[str, str] | None = None) -> A
         raise ConfigurationError(f"Invalid JSON configuration: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigurationError("JSON configuration root must be an object")
+    return load_config_data(data, config_path.parent, environ)
 
+
+def load_config_data(
+    data: Mapping[str, Any],
+    base: str | Path,
+    environ: Mapping[str, str] | None = None,
+) -> AppConfig:
     env = os.environ if environ is None else environ
-    base = config_path.parent
+    base_path = Path(base).expanduser().resolve()
     backup_data = _section(data, "backup")
     source = _database(_section(data, "source"), env, "source")
     destination_data = data.get("destination")
@@ -41,20 +50,19 @@ def load_config(path: str | Path, environ: Mapping[str, str] | None = None) -> A
 
     logging_data = _mapping(data.get("logging", {}), "logging")
     maintenance_data = _mapping(data.get("maintenance", {}), "maintenance")
-    post_backup_data = _mapping(data.get("post_backup", {}), "post_backup")
     return AppConfig(
         source=source,
-        destination=_database(_mapping(destination_data, "destination"), env, "destination")
+        destination=_destination(_mapping(destination_data, "destination"), env)
         if destination_data is not None
         else None,
         backup=BackupSettings(
             provider=provider.lower(),
-            directory=_path(base, backup_data.get("directory", "../backups")),
+            directory=_path(base_path, backup_data.get("directory", "../backups")),
             prefix=prefix,
             compress=bool(backup_data.get("compress", True)),
         ),
         logging=LoggingSettings(
-            file=_path(base, logging_data.get("file", "../logs/backups.log")),
+            file=_path(base_path, logging_data.get("file", "../logs/backups.log")),
             level=str(logging_data.get("level", "INFO")).upper(),
         ),
         maintenance=MaintenanceSettings(
@@ -63,7 +71,10 @@ def load_config(path: str | Path, environ: Mapping[str, str] | None = None) -> A
             log_max_bytes=_non_negative(maintenance_data, "log_max_bytes", 10 * 1024 * 1024),
             log_keep_files=_non_negative(maintenance_data, "log_keep_files", 5),
         ),
-        post_backup_commands=_post_backup_commands(post_backup_data, base),
+        pre_backup_commands=commands(data, "pre_backup", base_path),
+        pre_restore_commands=commands(data, "pre_restore", base_path),
+        post_restore_commands=commands(data, "post_restore", base_path),
+        post_backup_commands=commands(data, "post_backup", base_path),
     )
 
 
@@ -83,6 +94,38 @@ def _database(data: Mapping[str, Any], env: Mapping[str, str], name: str) -> Dat
         database=_text(data, "database", name),
         username=_text(data, "username", name),
         password=str(password),
+    )
+
+
+def _destination(data: Mapping[str, Any], env: Mapping[str, str]) -> DestinationConfig:
+    database = _database(data, env, "destination")
+    strategy = str(data.get("restore_strategy", "direct")).strip().lower()
+    if strategy not in {"direct", "validated_swap"}:
+        raise ConfigurationError("destination.restore_strategy must be direct or validated_swap")
+    required_tables = _string_array(data, "required_tables", "destination")
+    return DestinationConfig(
+        host=database.host,
+        port=database.port,
+        database=database.database,
+        username=database.username,
+        password=database.password,
+        restore=RestoreSettings(
+            strategy=strategy,
+            candidate_database_pattern=str(
+                data.get(
+                    "candidate_database_pattern",
+                    "{destination.database}_restore_{timestamp}",
+                )
+            ),
+            drop_candidate_on_exit=_boolean(data, "drop_candidate_on_exit", True),
+            drop_destination_before_promote=_boolean(data, "drop_destination_before_promote", True),
+            create_destination_before_promote=_boolean(
+                data, "create_destination_before_promote", True
+            ),
+            required_tables=required_tables,
+            compare_source_objects=_boolean(data, "compare_source_objects", False),
+            rewrite_view_schema_references=_boolean(data, "rewrite_view_schema_references", False),
+        ),
     )
 
 
@@ -117,38 +160,15 @@ def _non_negative(data: Mapping[str, Any], key: str, default: int) -> int:
     return value
 
 
-def _post_backup_commands(data: Mapping[str, Any], base: Path) -> tuple[PostBackupCommand, ...]:
-    commands = data.get("commands", [])
-    if not isinstance(commands, list):
-        raise ConfigurationError("post_backup.commands must be an array")
-    parsed = []
-    for index, value in enumerate(commands):
-        if not isinstance(value, dict):
-            raise ConfigurationError(f"post_backup.commands[{index}] must be an object")
-        arguments = value.get("command")
-        if (
-            not isinstance(arguments, list)
-            or not arguments
-            or any(not isinstance(argument, str) or not argument for argument in arguments)
-        ):
-            raise ConfigurationError(
-                f"post_backup.commands[{index}].command must be a non-empty string array"
-            )
-        environment = _mapping(
-            value.get("environment", {}), f"post_backup.commands[{index}].environment"
-        )
-        if any(
-            not isinstance(key, str) or not isinstance(item, str)
-            for key, item in environment.items()
-        ):
-            raise ConfigurationError(
-                f"post_backup.commands[{index}].environment must contain string values"
-            )
-        parsed.append(
-            PostBackupCommand(
-                arguments=tuple(arguments),
-                directory=_path(base, value.get("directory", ".")),
-                environment=tuple(environment.items()),
-            )
-        )
-    return tuple(parsed)
+def _boolean(data: Mapping[str, Any], key: str, default: bool) -> bool:
+    value = data.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigurationError(f"destination.{key} must be a boolean")
+    return value
+
+
+def _string_array(data: Mapping[str, Any], key: str, section: str) -> tuple[str, ...]:
+    value = data.get(key, [])
+    if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
+        raise ConfigurationError(f"{section}.{key} must be a string array")
+    return tuple(value)

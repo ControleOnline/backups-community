@@ -7,7 +7,9 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backups.models import BackupSettings, DatabaseConfig
+from backups.artifacts import rewrite_schema_references
+from backups.hooks import PostBackupRunner
+from backups.models import AppConfig, BackupSettings, DatabaseConfig
 from backups.process import ProcessRunner
 from backups.providers.base import BackupProvider
 
@@ -16,41 +18,120 @@ class MySQLProvider(BackupProvider):
     def __init__(self, runner: ProcessRunner | None = None) -> None:
         self.runner = runner or ProcessRunner()
 
-    def backup(self, source: DatabaseConfig, settings: BackupSettings, timestamp: datetime) -> Path:
-        normalized = timestamp.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+    def run(self, config: AppConfig, timestamp: datetime, command_runner: PostBackupRunner) -> Path:
+        from backups.providers.mysql_workflow import MySQLWorkflow
+
+        return MySQLWorkflow(self, command_runner).run(config, timestamp)
+
+    def artifact_path(
+        self, source: DatabaseConfig, settings: BackupSettings, timestamp: datetime
+    ) -> Path:
+        normalized = normalize_timestamp(timestamp)
         artifact = settings.directory / f"{settings.prefix}_{normalized}.sql"
-        if settings.compress:
-            artifact = artifact.with_suffix(".sql.gz")
-        with _credentials_file(source) as credentials:
-            # Business rule: capture a consistent transactional snapshot and all
-            # server-side database objects required for a complete restore.
-            command = [
-                "mysqldump",
-                f"--defaults-extra-file={credentials}",
-                "--single-transaction",
-                "--quick",
-                "--routines",
-                "--events",
-                "--triggers",
-                "--hex-blob",
-                "--set-gtid-purged=OFF",
-                source.database,
-            ]
-            self.runner.dump(command, artifact, settings.compress)
+        return artifact.with_suffix(".sql.gz") if settings.compress else artifact
+
+    def backup(self, source: DatabaseConfig, settings: BackupSettings, timestamp: datetime) -> Path:
+        artifact = self.artifact_path(source, settings, timestamp)
+        self.dump_database(source, artifact, settings.compress)
         return artifact
 
-    def restore(self, destination: DatabaseConfig, artifact: Path) -> None:
+    def dump_database(self, database: DatabaseConfig, artifact: Path, compress: bool) -> None:
+        with _credentials_file(database) as credentials:
+            # Business rule: every retained or promotion dump uses the complete,
+            # transaction-safe MySQL option set required by the restore contract.
+            command = _dump_command(credentials, database.database)
+            self.runner.dump(command, artifact, compress)
+
+    def restore(
+        self,
+        destination: DatabaseConfig,
+        artifact: Path,
+        rewrite_from: str | None = None,
+    ) -> None:
         if not artifact.is_file():
             raise FileNotFoundError(f"Backup artifact not found: {artifact}")
-        with _credentials_file(destination) as credentials:
+        rewritten = None
+        try:
+            selected = artifact
+            if rewrite_from is not None and rewrite_from != destination.database:
+                rewritten = _temporary_artifact(artifact)
+                rewrite_schema_references(artifact, rewritten, rewrite_from, destination.database)
+                selected = rewritten
+            with _credentials_file(destination) as credentials:
+                command = [
+                    "mysql",
+                    f"--defaults-extra-file={credentials}",
+                    "--binary-mode",
+                    "--database",
+                    destination.database,
+                ]
+                self.runner.restore(command, selected)
+        finally:
+            if rewritten is not None:
+                rewritten.unlink(missing_ok=True)
+
+    def create_database(
+        self, admin: DatabaseConfig, database: str, if_not_exists: bool = False
+    ) -> None:
+        clause = " IF NOT EXISTS" if if_not_exists else ""
+        self._query(admin, f"CREATE DATABASE{clause} {_identifier(database)};")
+
+    def drop_database(self, admin: DatabaseConfig, database: str) -> None:
+        self._query(admin, f"DROP DATABASE IF EXISTS {_identifier(database)};")
+
+    def objects(self, database: DatabaseConfig) -> set[tuple[str, str]]:
+        statement = (
+            "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES "
+            f"WHERE TABLE_SCHEMA = {_literal(database.database)} "
+            "ORDER BY TABLE_NAME, TABLE_TYPE;"
+        )
+        return set(self.query(database, statement))
+
+    def query(self, database: DatabaseConfig, statement: str) -> list[tuple[str, ...]]:
+        with _credentials_file(database) as credentials:
             command = [
                 "mysql",
                 f"--defaults-extra-file={credentials}",
-                "--binary-mode",
-                "--database",
-                destination.database,
+                "--batch",
+                "--skip-column-names",
             ]
-            self.runner.restore(command, artifact)
+            return self.runner.query(command, statement)
+
+
+def normalize_timestamp(timestamp: datetime) -> str:
+    return timestamp.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _dump_command(credentials: Path, database: str) -> list[str]:
+    return [
+        "mysqldump",
+        f"--defaults-extra-file={credentials}",
+        "--single-transaction",
+        "--quick",
+        "--routines",
+        "--events",
+        "--triggers",
+        "--hex-blob",
+        "--set-gtid-purged=OFF",
+        database,
+    ]
+
+
+def _temporary_artifact(artifact: Path) -> Path:
+    suffix = ".sql.gz" if artifact.suffix == ".gz" else ".sql"
+    descriptor, name = tempfile.mkstemp(prefix=".rewrite-", suffix=suffix, dir=artifact.parent)
+    os.close(descriptor)
+    path = Path(name)
+    path.unlink()
+    return path
+
+
+def _identifier(value: str) -> str:
+    return f"`{value.replace('`', '``')}`"
+
+
+def _literal(value: str) -> str:
+    return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
 
 
 @contextmanager

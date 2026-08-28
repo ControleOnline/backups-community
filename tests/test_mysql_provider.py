@@ -18,6 +18,10 @@ class FakeRunner:
         assert Path(command[1].split("=", 1)[1]).is_file()
         self.restore_call = (command, artifact)
 
+    def query(self, command: list[str], statement: str) -> list[tuple[str, ...]]:
+        assert Path(command[1].split("=", 1)[1]).is_file()
+        return [(statement,)]
+
 
 def test_mysql_backup_builds_safe_command_and_timestamped_artifact(tmp_path: Path) -> None:
     runner = FakeRunner()

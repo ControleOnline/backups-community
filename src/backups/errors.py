@@ -8,3 +8,7 @@ class ConfigurationError(BackupError):
 
 class ProcessError(BackupError):
     """Raised when an external backup command fails."""
+
+
+class ValidationError(BackupError):
+    """Raised when a restored candidate does not satisfy promotion gates."""
