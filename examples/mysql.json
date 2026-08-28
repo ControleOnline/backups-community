@@ -2,22 +2,68 @@
   "backup": {
     "provider": "mysql",
     "directory": "../backups",
-    "prefix": "controleonline",
+    "prefix": "gestaoTechlog",
     "compress": true
   },
   "source": {
     "host": "127.0.0.1",
     "port": 3306,
-    "database": "controleonline",
+    "database": "gestaoTechlog",
     "username": "backup",
-    "password_env": "BACKUP_SOURCE_PASSWORD"
+    "password": "change-me"
   },
   "destination": {
     "host": "127.0.0.1",
     "port": 3306,
-    "database": "controleonline_restore",
+    "database": "frethical_staging",
     "username": "restore",
-    "password_env": "BACKUP_DESTINATION_PASSWORD"
+    "password": "change-me",
+    "restore_strategy": "validated_swap",
+    "candidate_database_pattern": "{destination.database}_restore_{timestamp}",
+    "drop_candidate_on_exit": true,
+    "drop_destination_before_promote": true,
+    "create_destination_before_promote": true,
+    "required_tables": [
+      "whatsapp",
+      "whatsapp_template",
+      "doctrine_migration_versions"
+    ],
+    "compare_source_objects": true,
+    "rewrite_view_schema_references": true
+  },
+  "pre_backup": {
+    "commands": []
+  },
+  "pre_restore": {
+    "commands": []
+  },
+  "post_restore": {
+    "commands": []
+  },
+  "post_backup": {
+    "commands": [
+      {
+        "command": [
+          "mysql",
+          "--database",
+          "{destination.database}",
+          "--execute",
+          "UPDATE users SET password = '$2y$13$replace-with-staging-hash' WHERE email <> ''"
+        ]
+      },
+      {
+        "command": [
+          "php",
+          "bin/console",
+          "doctrine:migrations:migrate",
+          "--no-interaction"
+        ],
+        "directory": "/home/staging/frethical",
+        "environment": {
+          "APP_ENV": "staging"
+        }
+      }
+    ]
   },
   "logging": {
     "file": "../logs/backups.log",
@@ -28,8 +74,5 @@
     "log_retention_days": 14,
     "log_max_bytes": 10485760,
     "log_keep_files": 5
-  },
-  "post_backup": {
-    "commands": []
   }
 }
