@@ -15,7 +15,6 @@ dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.12"]
 
 [project.scripts]
 controle-backup = "backups.cli:main"
-controle-backup-maintenance = "backups.maintenance_cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

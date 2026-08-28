@@ -11,7 +11,7 @@ venv/
 .env
 .env.*
 !.env.example
-config/*.toml
+config/*.json
 !config/.gitkeep
 
 # Backup artifacts, logs, and transient process state are runtime data.

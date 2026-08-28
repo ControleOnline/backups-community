@@ -11,3 +11,10 @@ def configure_logging(path: Path, level: str) -> logging.Logger:
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
     logger.addHandler(handler)
     return logger
+
+
+def close_logging(logger: logging.Logger) -> None:
+    for handler in logger.handlers[:]:
+        handler.flush()
+        handler.close()
+        logger.removeHandler(handler)
