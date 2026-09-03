@@ -1,8 +1,11 @@
 import json
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from backups.config import load_config
-from backups.models import ReplicationAppConfig, ReplicationHealthSettings
+from backups.models import ReplicationAppConfig, ReplicationHealthSettings, ScheduleSettings
 from backups.providers.mysql_replication import MySQLReplicationProvider
+from backups.schedule import is_due
 
 
 def test_loads_replication_configuration(tmp_path):
@@ -11,6 +14,7 @@ def test_loads_replication_configuration(tmp_path):
         json.dumps(
             {
                 "type": "replication",
+                "schedule": {"time": "00:05", "timezone": "America/Sao_Paulo"},
                 "replication": {
                     "provider": "mysql",
                     "source": {"host": "source", "database": "app", "username": "dump", "password": "one"},
@@ -27,6 +31,14 @@ def test_loads_replication_configuration(tmp_path):
     assert isinstance(config, ReplicationAppConfig)
     assert config.replication.source_status.username == "repl"
     assert config.replication.repair_actions[0].name == "restart"
+    assert config.schedule.time == "00:05"
+
+
+def test_replication_schedule_is_checked_in_configured_timezone():
+    schedule = ScheduleSettings("00:05", "America/Sao_Paulo")
+    sao_paulo = ZoneInfo("America/Sao_Paulo")
+    assert is_due(schedule, datetime(2026, 9, 3, 0, 5, tzinfo=sao_paulo))
+    assert not is_due(schedule, datetime(2026, 9, 3, 0, 6, tzinfo=sao_paulo))
 
 
 class FakeProvider:

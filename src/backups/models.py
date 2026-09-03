@@ -56,6 +56,12 @@ class ReplicationAction:
 
 
 @dataclass(frozen=True)
+class ScheduleSettings:
+    time: str
+    timezone: str
+
+
+@dataclass(frozen=True)
 class ReplicationSettings:
     provider: str
     source: DatabaseConfig
@@ -103,4 +109,5 @@ class AppConfig:
 class ReplicationAppConfig:
     replication: ReplicationSettings
     logging: LoggingSettings
+    schedule: ScheduleSettings | None = None
     destinations: tuple[DestinationConfig, ...] = ()

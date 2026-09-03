@@ -20,6 +20,7 @@ from backups.models import (
     ReplicationHealthSettings,
     ReplicationSettings,
     RestoreSettings,
+    ScheduleSettings,
 )
 
 
@@ -127,6 +128,7 @@ def _replication_config(
     if not prefix or any(char in prefix for char in "/\\"):
         raise ConfigurationError("replication.backup.prefix must be a non-empty file name prefix")
     logging_data = _mapping(data.get("logging", {}), "logging")
+    schedule = _schedule(data.get("schedule"))
     return ReplicationAppConfig(
         replication=ReplicationSettings(
             provider=provider,
@@ -152,7 +154,33 @@ def _replication_config(
             file=_path(base, logging_data.get("file", "../logs/replication.log")),
             level=str(logging_data.get("level", "INFO")).upper(),
         ),
+        schedule=schedule,
     )
+
+
+def _schedule(value: Any) -> ScheduleSettings | None:
+    if value is None:
+        return None
+    data = _mapping(value, "schedule")
+    schedule_time = data.get("time")
+    if not isinstance(schedule_time, str) or len(schedule_time) != 5:
+        raise ConfigurationError("schedule.time must use HH:MM format")
+    try:
+        hour, minute = (int(part) for part in schedule_time.split(":"))
+    except ValueError as exc:
+        raise ConfigurationError("schedule.time must use HH:MM format") from exc
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ConfigurationError("schedule.time must use HH:MM format")
+    timezone = data.get("timezone", "UTC")
+    if not isinstance(timezone, str) or not timezone:
+        raise ConfigurationError("schedule.timezone must be a valid timezone")
+    try:
+        from zoneinfo import ZoneInfo
+
+        ZoneInfo(timezone)
+    except Exception as exc:
+        raise ConfigurationError(f"schedule.timezone is invalid: {timezone}") from exc
+    return ScheduleSettings(schedule_time, timezone)
 
 
 def _database(data: Mapping[str, Any], env: Mapping[str, str], name: str) -> DatabaseConfig:

@@ -1,5 +1,9 @@
 {
   "type": "replication",
+  "schedule": {
+    "time": "00:05",
+    "timezone": "America/Sao_Paulo"
+  },
   "replication": {
     "provider": "mysql",
     "source": {

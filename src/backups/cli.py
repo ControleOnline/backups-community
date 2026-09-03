@@ -7,6 +7,7 @@ from backups.errors import BackupError
 from backups.logging_config import close_logging, configure_logging
 from backups.maintenance_service import run_maintenance
 from backups.models import AppConfig, ReplicationAppConfig
+from backups.schedule import is_due
 from backups.service import BackupService, ReplicationService
 
 
@@ -37,6 +38,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _run_config(config: AppConfig | ReplicationAppConfig) -> bool:
     logger = None
     try:
+        if isinstance(config, ReplicationAppConfig) and not is_due(config.schedule):
+            return True
         logger = configure_logging(config.logging.file, config.logging.level)
         if isinstance(config, ReplicationAppConfig):
             ReplicationService(config).run()
