@@ -38,7 +38,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _run_config(config: AppConfig | ReplicationAppConfig) -> bool:
     logger = None
     try:
-        if isinstance(config, ReplicationAppConfig) and not is_due(config.schedule):
+        if not is_due(config.schedule):
             return True
         logger = configure_logging(config.logging.file, config.logging.level)
         if isinstance(config, ReplicationAppConfig):

@@ -67,12 +67,12 @@ BACKUPS_SERVER_MAIN_USERNAME=backup_catalog
 BACKUPS_SERVER_MAIN_PASSWORD=change-me
 ```
 
-For a dedicated replication check, configure its time and timezone in the JSON
-file. The file may contain the operational credentials and must remain
-untracked. The cron can then call it once per minute:
+Configure each JSON file with its time and timezone. The files may contain the
+operational credentials and must remain untracked. A single central cron can
+then discover and execute every configuration at its configured time:
 
 ```cron
-* * * * * cd /opt/backups-community && /usr/bin/python3 backup.py config/replication.json >> logs/replication.log 2>&1
+* * * * * cd /opt/backups-community && /usr/bin/python3 backup.py >> logs/cron.log 2>&1
 ```
 
 Each catalog is read from `servers.backup_config`. That column must contain the

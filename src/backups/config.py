@@ -59,6 +59,7 @@ def load_config_data(
 
     logging_data = _mapping(data.get("logging", {}), "logging")
     maintenance_data = _mapping(data.get("maintenance", {}), "maintenance")
+    schedule = _schedule(data.get("schedule"))
     return AppConfig(
         source=source,
         destination=destinations[0] if destinations else None,
@@ -82,6 +83,7 @@ def load_config_data(
         pre_restore_commands=commands(data, "pre_restore", base_path),
         post_restore_commands=commands(data, "post_restore", base_path),
         post_backup_commands=commands(data, "post_backup", base_path),
+        schedule=schedule,
         destinations=destinations,
     )
 
