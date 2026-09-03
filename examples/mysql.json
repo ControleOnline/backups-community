@@ -1,4 +1,8 @@
 {
+  "schedule": {
+    "time": "02:00",
+    "timezone": "America/Sao_Paulo"
+  },
   "backup": {
     "provider": "mysql",
     "directory": "../backups",
