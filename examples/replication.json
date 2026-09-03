@@ -7,21 +7,21 @@
       "port": 3306,
       "database": "app",
       "username": "techlog",
-      "password_env": "REPLICATION_SOURCE_PASSWORD"
+      "password": "change-me"
     },
     "source_status": {
       "host": "db.example.com",
       "port": 3306,
       "database": "mysql",
       "username": "replica",
-      "password_env": "REPLICATION_STATUS_PASSWORD"
+      "password": "change-me"
     },
     "replica": {
       "host": "localhost",
       "port": 3306,
       "database": "mysql",
       "username": "root",
-      "password_env": "REPLICATION_REPLICA_PASSWORD"
+      "password": "change-me"
     },
     "database": "app",
     "health": {
