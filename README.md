@@ -47,24 +47,11 @@ The timestamped artifact name is generated internally. When `destination` or
 `destinations` is configured, that exact artifact is restored without a dynamic
 shell argument.
 
-To run every configured backup in one cron entry, omit the JSON argument:
+To run every configured backup in one cron entry, omit the JSON argument. The
+CLI discovers `config/*.json`; each file contains its own schedule:
 
 ```bash
 python backup.py
-```
-
-In this mode the project reads `.env` from the repository root. `BACKUPS_CONFIG_GLOB`
-selects local JSON files, and `BACKUPS_SERVER_CATALOGS` names one or more MySQL
-catalog databases that contain a multi-tenancy `servers` table:
-
-```dotenv
-BACKUPS_CONFIG_GLOB=config/*.json
-BACKUPS_SERVER_CATALOGS=main,legacy
-BACKUPS_SERVER_MAIN_HOST=127.0.0.1
-BACKUPS_SERVER_MAIN_PORT=3306
-BACKUPS_SERVER_MAIN_DATABASE=controleonline
-BACKUPS_SERVER_MAIN_USERNAME=backup_catalog
-BACKUPS_SERVER_MAIN_PASSWORD=change-me
 ```
 
 Configure each JSON file with its time and timezone. The files may contain the
@@ -74,12 +61,6 @@ then discover and execute every configuration at its configured time:
 ```cron
 * * * * * cd /opt/backups-community && /usr/bin/python3 backup.py >> logs/cron.log 2>&1
 ```
-
-Each catalog is read from `servers.backup_config`. That column must contain the
-same JSON object accepted by file configs, including source credentials,
-destination credentials, restore strategy, hooks, logging, and retention. The
-catalog connection also uses a temporary MySQL option file, so its password is
-not exposed in the process list.
 
 The workflow accepts command hooks in four stages:
 
@@ -108,8 +89,9 @@ Commands are argument arrays and are executed directly, without a shell:
 }
 ```
 
-Directories are resolved relative to the JSON file. The process environment is
-inherited and the configured `environment` values override it for that command.
+Directories are resolved relative to the JSON file. The configured `environment`
+values are part of the JSON command definition and override the inherited process
+environment for that command.
 A failing command stops the workflow with a non-zero exit code.
 
 Safe template variables are available in command arguments, directories,

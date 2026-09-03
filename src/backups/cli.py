@@ -16,7 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "configs",
         nargs="*",
-        help="Optional JSON configuration files. Without arguments, .env discovery is used.",
+        help="Optional JSON configuration files. Without arguments, config/*.json is discovered.",
     )
     return parser
 
