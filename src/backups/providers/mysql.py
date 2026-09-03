@@ -97,6 +97,11 @@ class MySQLProvider(BackupProvider):
             ]
             return self.runner.query(command, statement)
 
+    def query_vertical(self, database: DatabaseConfig, statement: str) -> str:
+        with _credentials_file(database) as credentials:
+            command = ["mysql", f"--defaults-extra-file={credentials}"]
+            return self.runner.query_raw(command, statement)
+
 
 def normalize_timestamp(timestamp: datetime) -> str:
     return timestamp.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")

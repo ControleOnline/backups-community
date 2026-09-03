@@ -43,6 +43,32 @@ class CommandConfig:
 
 
 @dataclass(frozen=True)
+class ReplicationHealthSettings:
+    max_seconds_behind: int | None
+    retries: int
+    retry_delay_seconds: int
+
+
+@dataclass(frozen=True)
+class ReplicationAction:
+    name: str
+    parameters: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class ReplicationSettings:
+    provider: str
+    source: DatabaseConfig
+    source_status: DatabaseConfig | None
+    replica: DatabaseConfig
+    database: str
+    health: ReplicationHealthSettings
+    repair_enabled: bool
+    repair_actions: tuple[ReplicationAction, ...]
+    backup: BackupSettings
+
+
+@dataclass(frozen=True)
 class RestoreSettings:
     strategy: str
     candidate_database_pattern: str
@@ -70,4 +96,11 @@ class AppConfig:
     pre_restore_commands: tuple[CommandConfig, ...]
     post_restore_commands: tuple[CommandConfig, ...]
     post_backup_commands: tuple[CommandConfig, ...]
+    destinations: tuple[DestinationConfig, ...] = ()
+
+
+@dataclass(frozen=True)
+class ReplicationAppConfig:
+    replication: ReplicationSettings
+    logging: LoggingSettings
     destinations: tuple[DestinationConfig, ...] = ()

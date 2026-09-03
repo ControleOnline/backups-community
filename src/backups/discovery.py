@@ -8,14 +8,14 @@ from backups.catalog import configs_from_catalogs
 from backups.config import load_config
 from backups.env_file import load_env_file
 from backups.errors import ConfigurationError
-from backups.models import AppConfig
+from backups.models import AppConfig, ReplicationAppConfig
 
 
 def discover_configs(
     arguments: list[str],
     root: str | Path = ".",
     environ: Mapping[str, str] | None = None,
-) -> list[AppConfig]:
+) -> list[AppConfig | ReplicationAppConfig]:
     env = dict(os.environ if environ is None else environ)
     root_path = Path(root).expanduser().resolve()
     env.update(load_env_file(root_path / ".env"))

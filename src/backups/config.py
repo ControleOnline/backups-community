@@ -15,11 +15,15 @@ from backups.models import (
     DestinationConfig,
     LoggingSettings,
     MaintenanceSettings,
+    ReplicationAction,
+    ReplicationAppConfig,
+    ReplicationHealthSettings,
+    ReplicationSettings,
     RestoreSettings,
 )
 
 
-def load_config(path: str | Path, environ: Mapping[str, str] | None = None) -> AppConfig:
+def load_config(path: str | Path, environ: Mapping[str, str] | None = None) -> AppConfig | ReplicationAppConfig:
     config_path = Path(path).expanduser().resolve()
     if not config_path.is_file():
         raise ConfigurationError(f"Configuration file not found: {config_path}")
@@ -30,6 +34,10 @@ def load_config(path: str | Path, environ: Mapping[str, str] | None = None) -> A
         raise ConfigurationError(f"Invalid JSON configuration: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigurationError("JSON configuration root must be an object")
+    if data.get("type", "backup") == "replication":
+        return _replication_config(data, config_path.parent, environ)
+    if data.get("type", "backup") != "backup":
+        raise ConfigurationError("type must be 'backup' or 'replication'")
     return load_config_data(data, config_path.parent, environ)
 
 
@@ -74,6 +82,76 @@ def load_config_data(
         post_restore_commands=commands(data, "post_restore", base_path),
         post_backup_commands=commands(data, "post_backup", base_path),
         destinations=destinations,
+    )
+
+
+def _replication_config(
+    data: Mapping[str, Any], base: Path, environ: Mapping[str, str] | None
+) -> ReplicationAppConfig:
+    env = os.environ if environ is None else environ
+    replication_data = _section(data, "replication")
+    provider = _text(replication_data, "provider", "replication").lower()
+    if provider != "mysql":
+        raise ConfigurationError("replication.provider must be 'mysql'")
+    source = _database(_section(replication_data, "source"), env, "replication.source")
+    status_data = replication_data.get("source_status")
+    source_status = (
+        _database(_mapping(status_data, "replication.source_status"), env, "replication.source_status")
+        if status_data is not None
+        else None
+    )
+    replica = _database(_section(replication_data, "replica"), env, "replication.replica")
+    database = _text(replication_data, "database", "replication")
+    health_data = _mapping(replication_data.get("health", {}), "replication.health")
+    max_seconds = health_data.get("max_seconds_behind", 300)
+    if max_seconds is not None and (not isinstance(max_seconds, int) or max_seconds < 0):
+        raise ConfigurationError("replication.health.max_seconds_behind must be a non-negative integer or null")
+    repair_data = _mapping(replication_data.get("repair", {}), "replication.repair")
+    actions = repair_data.get("actions", [])
+    if not isinstance(actions, list):
+        raise ConfigurationError("replication.repair.actions must be an array")
+    parsed_actions = []
+    for index, action in enumerate(actions):
+        if isinstance(action, str):
+            name, parameters = action, {}
+        elif isinstance(action, dict):
+            name = action.get("action")
+            parameters = {key: str(value) for key, value in action.items() if key != "action"}
+        else:
+            raise ConfigurationError(f"replication.repair.actions[{index}] must be a string or object")
+        if name not in {"start", "stop", "restart", "reseed"}:
+            raise ConfigurationError(f"replication.repair.actions[{index}] has unsupported action '{name}'")
+        parsed_actions.append(ReplicationAction(name, tuple(parameters.items())))
+    backup_data = _mapping(replication_data.get("backup", {}), "replication.backup")
+    prefix = str(backup_data.get("prefix") or f"{database}_replication")
+    if not prefix or any(char in prefix for char in "/\\"):
+        raise ConfigurationError("replication.backup.prefix must be a non-empty file name prefix")
+    logging_data = _mapping(data.get("logging", {}), "logging")
+    return ReplicationAppConfig(
+        replication=ReplicationSettings(
+            provider=provider,
+            source=source,
+            source_status=source_status,
+            replica=replica,
+            database=database,
+            health=ReplicationHealthSettings(
+                max_seconds,
+                _integer(health_data, "retries", 1, "replication.health"),
+                _integer(health_data, "retry_delay_seconds", 5, "replication.health"),
+            ),
+            repair_enabled=bool(repair_data.get("enabled", False)),
+            repair_actions=tuple(parsed_actions),
+            backup=BackupSettings(
+                provider=provider,
+                directory=_path(base, backup_data.get("directory", "../backups")),
+                prefix=prefix,
+                compress=bool(backup_data.get("compress", True)),
+            ),
+        ),
+        logging=LoggingSettings(
+            file=_path(base, logging_data.get("file", "../logs/replication.log")),
+            level=str(logging_data.get("level", "INFO")).upper(),
+        ),
     )
 
 
@@ -169,6 +247,13 @@ def _non_negative(data: Mapping[str, Any], key: str, default: int) -> int:
     value = data.get(key, default)
     if not isinstance(value, int) or value < 0:
         raise ConfigurationError(f"maintenance.{key} must be a non-negative integer")
+    return value
+
+
+def _integer(data: Mapping[str, Any], key: str, default: int, section: str) -> int:
+    value = data.get(key, default)
+    if not isinstance(value, int) or value < 0:
+        raise ConfigurationError(f"{section}.{key} must be a non-negative integer")
     return value
 
 

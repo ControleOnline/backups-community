@@ -11,6 +11,19 @@ from backups.errors import ProcessError
 
 
 class ProcessRunner:
+    def query_raw(self, command: list[str], statement: str) -> str:
+        with tempfile.TemporaryFile() as errors:
+            process = subprocess.run(
+                command,
+                input=statement.encode("utf-8"),
+                stdout=subprocess.PIPE,
+                stderr=errors,
+                check=False,
+            )
+            if process.returncode:
+                raise ProcessError(_process_message("mysql", process.returncode, errors))
+        return process.stdout.decode("utf-8", errors="strict")
+
     def dump(self, command: list[str], output: Path, compressed: bool) -> None:
         output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_name(f".{output.name}.partial")
@@ -43,17 +56,7 @@ class ProcessRunner:
                 raise ProcessError(_process_message("mysql", return_code, errors))
 
     def query(self, command: list[str], statement: str) -> list[tuple[str, ...]]:
-        with tempfile.TemporaryFile() as errors:
-            process = subprocess.run(
-                command,
-                input=statement.encode("utf-8"),
-                stdout=subprocess.PIPE,
-                stderr=errors,
-                check=False,
-            )
-            if process.returncode:
-                raise ProcessError(_process_message("mysql", process.returncode, errors))
-        output = process.stdout.decode("utf-8", errors="strict")
+        output = self.query_raw(command, statement)
         return [tuple(line.split("\t")) for line in output.splitlines() if line]
 
 

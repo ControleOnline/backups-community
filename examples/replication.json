@@ -1,0 +1,48 @@
+{
+  "type": "replication",
+  "replication": {
+    "provider": "mysql",
+    "source": {
+      "host": "db.example.com",
+      "port": 3306,
+      "database": "app",
+      "username": "techlog",
+      "password_env": "REPLICATION_SOURCE_PASSWORD"
+    },
+    "source_status": {
+      "host": "db.example.com",
+      "port": 3306,
+      "database": "mysql",
+      "username": "replica",
+      "password_env": "REPLICATION_STATUS_PASSWORD"
+    },
+    "replica": {
+      "host": "localhost",
+      "port": 3306,
+      "database": "mysql",
+      "username": "root",
+      "password_env": "REPLICATION_REPLICA_PASSWORD"
+    },
+    "database": "app",
+    "health": {
+      "max_seconds_behind": 300,
+      "retries": 2,
+      "retry_delay_seconds": 10
+    },
+    "repair": {
+      "enabled": false,
+      "actions": [
+        { "action": "reseed", "database": "app" }
+      ]
+    },
+    "backup": {
+      "directory": "../backups",
+      "prefix": "app_replication",
+      "compress": true
+    }
+  },
+  "logging": {
+    "file": "../logs/replication.log",
+    "level": "INFO"
+  }
+}

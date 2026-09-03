@@ -6,8 +6,8 @@ from backups.discovery import discover_configs
 from backups.errors import BackupError
 from backups.logging_config import close_logging, configure_logging
 from backups.maintenance_service import run_maintenance
-from backups.models import AppConfig
-from backups.service import BackupService
+from backups.models import AppConfig, ReplicationAppConfig
+from backups.service import BackupService, ReplicationService
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,10 +34,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 1 if failed else 0
 
 
-def _run_config(config: AppConfig) -> bool:
+def _run_config(config: AppConfig | ReplicationAppConfig) -> bool:
     logger = None
     try:
         logger = configure_logging(config.logging.file, config.logging.level)
+        if isinstance(config, ReplicationAppConfig):
+            ReplicationService(config).run()
+            logger.info("Replication health check completed")
+            close_logging(logger)
+            logger = None
+            print("replication healthy")
+            return True
         artifact = BackupService(config).run()
         logger.info("Backup workflow completed: %s", artifact)
         close_logging(logger)
