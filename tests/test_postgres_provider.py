@@ -30,11 +30,21 @@ def _passfile(command: list[str]) -> Path:
     return Path(value)
 
 
+SCRIPT = (
+    "SET statement_timeout = 0;\n"
+    "SET transaction_timeout = 0;\n"
+    "DROP TABLE IF EXISTS public.issues;\n"
+    "CREATE TABLE public.issues (id uuid);\n"
+)
+
+
 class FakeRunner:
-    def __init__(self, toc: str = TOC) -> None:
+    def __init__(self, toc: str = TOC, server_version: str = "150015") -> None:
         self.toc = toc
+        self.server_version = server_version
         self.dumps: list[tuple[list[str], Path, bool, str]] = []
         self.executions: list[tuple[list[str], str, str]] = []
+        self.restores: list[tuple[list[str], str, str, int]] = []
         self.queries: list[tuple[list[str], str]] = []
         self.passfiles: list[str] = []
 
@@ -51,10 +61,19 @@ class FakeRunner:
     def execute(self, command: list[str], program: str) -> None:
         use_list = next(item for item in command if item.startswith("--use-list="))
         selected = Path(use_list.split("=", 1)[1]).read_text(encoding="utf-8")
+        script = Path(next(item for item in command if item.startswith("--file=")).split("=", 1)[1])
+        script.write_text(SCRIPT, encoding="utf-8")
         self.executions.append((command, program, selected))
+
+    def restore(self, command: list[str], artifact: Path, program: str = "") -> None:
+        assert _passfile(command).is_file()
+        mode = artifact.stat().st_mode & 0o777
+        self.restores.append((command, program, artifact.read_text(encoding="utf-8"), mode))
 
     def query(self, command: list[str], statement: str, program: str = "") -> list[tuple[str, ...]]:
         self.queries.append((command, statement))
+        if "server_version_num" in statement:
+            return [(self.server_version,)]
         if "pg_database" in statement:
             return []
         if "information_schema.tables" in statement:
@@ -95,14 +114,37 @@ def test_restore_is_atomic_and_skips_extension_entries(app_config, tmp_path: Pat
 
     provider.restore(destination, artifact)
 
-    command, program, selected = runner.executions[0]
+    render, program, selected = runner.executions[0]
     assert program == "pg_restore"
-    for flag in ("--clean", "--if-exists", "--no-owner", "--no-privileges", "--single-transaction"):
-        assert flag in command
-    assert command[-1] == str(artifact)
+    for flag in ("--clean", "--if-exists", "--no-owner", "--no-privileges"):
+        assert flag in render
+    assert render[-1] == str(artifact)
     assert "EXTENSION" not in selected
     assert "TABLE public issues" in selected
+
+    command, program, _script, mode = runner.restores[0]
+    assert program == "psql"
+    assert "--single-transaction" in command and "--set=ON_ERROR_STOP=1" in command
+    if os.name == "posix":  # Windows ignores POSIX permission bits
+        assert mode == 0o600
     assert not _passfile(command).exists()
+    assert list(tmp_path.glob(".restore-*")) == []
+
+
+def test_restore_drops_settings_unknown_to_older_servers(app_config, tmp_path: Path) -> None:
+    artifact = tmp_path / "paperclip.pgdump"
+    artifact.write_bytes(b"PGDMP")
+
+    old = FakeRunner(server_version="150015")
+    PostgreSQLProvider(old).restore(app_config.destination, artifact)  # type: ignore[arg-type]
+    new = FakeRunner(server_version="180006")
+    PostgreSQLProvider(new).restore(app_config.destination, artifact)  # type: ignore[arg-type]
+
+    old_script = old.restores[0][2]
+    assert "transaction_timeout" not in old_script
+    assert "SET statement_timeout = 0;" in old_script
+    assert "CREATE TABLE public.issues" in old_script
+    assert "SET transaction_timeout = 0;" in new.restores[0][2]
 
 
 def test_restore_refuses_archive_without_tables(app_config, tmp_path: Path) -> None:
@@ -179,7 +221,7 @@ def test_workflow_backs_up_and_restores_into_every_destination(app_config, tmp_p
     artifact = provider.run(config, datetime(2026, 11, 12, 23, tzinfo=UTC), NoCommands())  # type: ignore[arg-type]
 
     assert artifact.suffix == ".pgdump" and artifact.is_file()
-    assert len(runner.executions) == 1
+    assert len(runner.executions) == 1 and len(runner.restores) == 1
 
 
 def test_maintenance_prunes_old_postgres_archives(app_config, tmp_path: Path) -> None:

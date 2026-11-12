@@ -82,20 +82,48 @@ class PostgreSQLProvider(BackupProvider):
         toc = self.table_of_contents(artifact)
         self._guard_artifact(destination, toc)
         selected = [line for line in toc if not _EXTENSION_ENTRY.match(line)]
-        with _password_file(destination) as passfile, _list_file(selected) as use_list:
+        server_version = self.server_version(destination)
+        with (
+            _list_file(selected) as use_list,
+            _script_file(artifact) as script,
+            _password_file(destination) as passfile,
+        ):
+            # Business rule: pg_restore renders the archive as SQL, settings the
+            # destination server does not know are removed, and psql applies the
+            # script in one transaction that stops at the first error. A newer
+            # pg_restore talking to an older server would otherwise abort on
+            # parameters such as transaction_timeout (PostgreSQL 17+).
+            self.runner.execute(
+                [
+                    "pg_restore",
+                    "--clean",
+                    "--if-exists",
+                    "--no-owner",
+                    "--no-privileges",
+                    f"--use-list={use_list}",
+                    f"--file={script}",
+                    str(artifact),
+                ],
+                program="pg_restore",
+            )
+            _remove_unsupported_settings(script, server_version)
             command = [
-                "pg_restore",
-                "--clean",
-                "--if-exists",
-                "--no-owner",
-                "--no-privileges",
+                "psql",
+                "--no-psqlrc",
+                "--quiet",
                 "--single-transaction",
-                "--exit-on-error",
-                f"--use-list={use_list}",
+                "--set=ON_ERROR_STOP=1",
+                "--output=/dev/null",
                 f"--dbname={_conninfo(destination, passfile)}",
-                str(artifact),
             ]
-            self.runner.execute(command, program="pg_restore")
+            self.runner.restore(command, script, program="psql")
+
+    def server_version(self, database: DatabaseConfig) -> int:
+        rows = self.query(database, "SHOW server_version_num;")
+        try:
+            return int(rows[0][0])
+        except (IndexError, ValueError) as exc:
+            raise ValidationError("Could not read PostgreSQL server_version_num") from exc
 
     def table_of_contents(self, artifact: Path) -> list[str]:
         output = self.runner.query_raw(["pg_restore", "--list", str(artifact)], "", program="pg_restore")
@@ -207,6 +235,44 @@ def _password_file(database: DatabaseConfig) -> Iterator[Path]:
         yield path
     finally:
         path.unlink(missing_ok=True)
+
+
+# Session settings emitted by newer pg_restore versions, keyed by the first
+# server_version_num that understands them.
+_VERSIONED_SETTINGS = {"transaction_timeout": 170000}
+_SET_STATEMENT = re.compile(r"^SET\s+([a-z_]+)\s*=")
+
+
+def _remove_unsupported_settings(script: Path, server_version: int) -> None:
+    unsupported = {
+        name for name, minimum in _VERSIONED_SETTINGS.items() if server_version < minimum
+    }
+    if not unsupported:
+        return
+    filtered = script.with_name(script.name + ".filtered")
+    with script.open("rb") as source, filtered.open("wb") as target:
+        for raw in source:
+            match = _SET_STATEMENT.match(raw.decode("utf-8", errors="replace"))
+            if match and match.group(1) in unsupported:
+                continue
+            target.write(raw)
+    os.chmod(filtered, 0o600)
+    filtered.replace(script)
+
+
+@contextmanager
+def _script_file(artifact: Path) -> Iterator[Path]:
+    # The rendered SQL holds the full data set: keep it private and next to the
+    # artifact (same filesystem), and always remove it.
+    descriptor, name = tempfile.mkstemp(prefix=".restore-", suffix=".sql", dir=artifact.parent)
+    os.close(descriptor)
+    path = Path(name)
+    try:
+        os.chmod(path, 0o600)
+        yield path
+    finally:
+        path.unlink(missing_ok=True)
+        path.with_name(path.name + ".filtered").unlink(missing_ok=True)
 
 
 @contextmanager

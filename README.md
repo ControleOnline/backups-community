@@ -114,10 +114,12 @@ Set `backup.provider` to `postgres` and give every database an explicit `port`
   `<prefix>_<timestamp>.pgdump`; the archive is compressed by `pg_dump` itself
   when `backup.compress` is true. Retention removes old `.pgdump` files exactly
   like `.sql*` artifacts.
-- Restores use `pg_restore --clean --if-exists --no-owner --no-privileges
-  --single-transaction`, so a destination is either fully replaced or left
-  untouched. Because `pg_restore` generates the statements for the destination
-  server, a dump taken by a newer client restores into an older server.
+- Restores render the archive with `pg_restore --clean --if-exists --no-owner
+  --no-privileges` into a private SQL script, drop session settings the
+  destination server does not know (for example `transaction_timeout` before
+  PostgreSQL 17), and apply it with `psql --single-transaction` and
+  `ON_ERROR_STOP`, so a destination is either fully replaced or left untouched.
+  A dump taken by a newer client therefore restores into an older server.
 - Extension entries are skipped on restore: extensions must already exist in the
   destination (a non-superuser restore role usually cannot create them).
 - Before touching a destination the archive is checked: it must contain at least
