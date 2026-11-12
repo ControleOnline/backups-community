@@ -3,9 +3,14 @@ from collections.abc import Callable
 from backups.errors import ConfigurationError
 from backups.providers.base import BackupProvider
 from backups.providers.mysql import MySQLProvider
+from backups.providers.postgres import PostgreSQLProvider
 
 ProviderFactory = Callable[[], BackupProvider]
-PROVIDERS: dict[str, ProviderFactory] = {"mysql": MySQLProvider}
+PROVIDERS: dict[str, ProviderFactory] = {
+    "mysql": MySQLProvider,
+    "postgres": PostgreSQLProvider,
+    "postgresql": PostgreSQLProvider,
+}
 
 
 def get_provider(name: str) -> BackupProvider:
