@@ -11,7 +11,7 @@ from backups.errors import ProcessError
 
 
 class ProcessRunner:
-    def query_raw(self, command: list[str], statement: str) -> str:
+    def query_raw(self, command: list[str], statement: str, program: str = "mysql") -> str:
         with tempfile.TemporaryFile() as errors:
             process = subprocess.run(
                 command,
@@ -21,10 +21,12 @@ class ProcessRunner:
                 check=False,
             )
             if process.returncode:
-                raise ProcessError(_process_message("mysql", process.returncode, errors))
+                raise ProcessError(_process_message(program, process.returncode, errors))
         return process.stdout.decode("utf-8", errors="strict")
 
-    def dump(self, command: list[str], output: Path, compressed: bool) -> None:
+    def dump(
+        self, command: list[str], output: Path, compressed: bool, program: str = "mysqldump"
+    ) -> None:
         output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_name(f".{output.name}.partial")
         try:
@@ -35,13 +37,13 @@ class ProcessRunner:
                 process.stdout.close()
                 return_code = process.wait()
                 if return_code:
-                    raise ProcessError(_process_message("mysqldump", return_code, errors))
+                    raise ProcessError(_process_message(program, return_code, errors))
             temporary.replace(output)
         except Exception:
             temporary.unlink(missing_ok=True)
             raise
 
-    def restore(self, command: list[str], artifact: Path) -> None:
+    def restore(self, command: list[str], artifact: Path, program: str = "mysql") -> None:
         with tempfile.TemporaryFile() as errors, _reader(artifact) as reader:
             process = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=errors)
             assert process.stdin is not None
@@ -53,10 +55,24 @@ class ProcessRunner:
                 process.stdin.close()
             return_code = process.wait()
             if return_code:
-                raise ProcessError(_process_message("mysql", return_code, errors))
+                raise ProcessError(_process_message(program, return_code, errors))
 
-    def query(self, command: list[str], statement: str) -> list[tuple[str, ...]]:
-        output = self.query_raw(command, statement)
+    def execute(self, command: list[str], program: str) -> None:
+        with tempfile.TemporaryFile() as errors:
+            process = subprocess.run(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=errors,
+                check=False,
+            )
+            if process.returncode:
+                raise ProcessError(_process_message(program, process.returncode, errors))
+
+    def query(
+        self, command: list[str], statement: str, program: str = "mysql"
+    ) -> list[tuple[str, ...]]:
+        output = self.query_raw(command, statement, program)
         return [tuple(line.split("\t")) for line in output.splitlines() if line]
 
 

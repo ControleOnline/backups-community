@@ -1,13 +1,15 @@
 # Backups Community
 
 Extensible Python CLI for backup, restore, post-restore hooks, and retention
-maintenance. The first provider supports MySQL; providers for PostgreSQL and
-file storage can be added without changing the root entrypoint.
+maintenance. Providers: MySQL (`mysql`) and PostgreSQL (`postgres` /
+`postgresql`). New providers can be added without changing the root entrypoint.
 
 ## Requirements
 
 - Python 3.11+
-- `mysqldump` and `mysql` available in `PATH`
+- MySQL provider: `mysqldump` and `mysql` available in `PATH`
+- PostgreSQL provider: `pg_dump`, `pg_restore` and `psql` available in `PATH`,
+  with a client version greater than or equal to every server it touches
 
 No Python runtime dependency is required.
 
@@ -102,6 +104,33 @@ environment values, and candidate database names:
 - `{candidate.database}`
 - `{artifact}`
 - `{timestamp}`
+
+## PostgreSQL
+
+Set `backup.provider` to `postgres` and give every database an explicit `port`
+(the default port is MySQL's 3306). See `examples/postgres.json`.
+
+- Backups use `pg_dump --format=custom` and are written as
+  `<prefix>_<timestamp>.pgdump`; the archive is compressed by `pg_dump` itself
+  when `backup.compress` is true. Retention removes old `.pgdump` files exactly
+  like `.sql*` artifacts.
+- Restores render the archive with `pg_restore --clean --if-exists --no-owner
+  --no-privileges` into a private SQL script, drop session settings the
+  destination server does not know (for example `transaction_timeout` before
+  PostgreSQL 17), and apply it with `psql --single-transaction` and
+  `ON_ERROR_STOP`, so a destination is either fully replaced or left untouched.
+  A dump taken by a newer client therefore restores into an older server.
+- Extension entries are skipped on restore: extensions must already exist in the
+  destination (a non-superuser restore role usually cannot create them).
+- Before touching a destination the archive is checked: it must contain at least
+  one table and every table listed in `destination.required_tables`
+  (non-`public` tables are written as `schema.table`). This prevents an empty or
+  wrong source from wiping a redundancy copy.
+- Passwords never appear in process arguments: a temporary `0600` passfile is
+  referenced from the libpq connection string. `password_env` values can live in
+  the untracked `.env` file at the repository root.
+- `validated_swap` works when the destination role may create and drop databases
+  (`CREATEDB`); candidates are managed through the `postgres` maintenance database.
 
 ## Restore strategies
 

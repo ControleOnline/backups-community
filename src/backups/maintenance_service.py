@@ -17,11 +17,15 @@ def run_maintenance(config: AppConfig, now: float | None = None) -> MaintenanceR
     rotated = rotate_log(
         config.logging.file, config.maintenance.log_max_bytes, config.maintenance.log_keep_files
     )
-    backups = prune_old_files(
-        config.backup.directory,
-        config.maintenance.backup_retention_days,
-        current_time,
-        f"{config.backup.prefix}_*.sql*",
+    backups = sum(
+        prune_old_files(
+            config.backup.directory,
+            config.maintenance.backup_retention_days,
+            current_time,
+            pattern,
+        )
+        # MySQL artifacts are .sql/.sql.gz; PostgreSQL archives are .pgdump.
+        for pattern in (f"{config.backup.prefix}_*.sql*", f"{config.backup.prefix}_*.pgdump")
     )
     logs = prune_old_files(
         config.logging.file.parent,

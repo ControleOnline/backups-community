@@ -1,0 +1,44 @@
+{
+  "schedule": {
+    "time": "02:30",
+    "timezone": "America/Sao_Paulo"
+  },
+  "backup": {
+    "provider": "postgres",
+    "directory": "../backups",
+    "prefix": "app",
+    "compress": true
+  },
+  "source": {
+    "host": "127.0.0.1",
+    "port": 5432,
+    "database": "app",
+    "username": "backup",
+    "password": "change-me"
+  },
+  "destinations": [
+    {
+      "host": "redundancy.example.com",
+      "port": 5432,
+      "database": "app_redundancy",
+      "username": "restore",
+      "password_env": "APP_REDUNDANCY_DB_PASSWORD",
+      "restore_strategy": "direct",
+      "required_tables": [
+        "users",
+        "orders",
+        "audit.events"
+      ]
+    }
+  ],
+  "logging": {
+    "file": "../logs/postgres.log",
+    "level": "INFO"
+  },
+  "maintenance": {
+    "backup_retention_days": 14,
+    "log_retention_days": 14,
+    "log_max_bytes": 10485760,
+    "log_keep_files": 5
+  }
+}
