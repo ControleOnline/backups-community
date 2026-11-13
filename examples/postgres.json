@@ -5,35 +5,34 @@
   },
   "backup": {
     "provider": "postgres",
-    "directory": "../db",
-    "prefix": "paperclip",
+    "directory": "../backups",
+    "prefix": "app",
     "compress": true
   },
   "source": {
     "host": "127.0.0.1",
-    "port": 5433,
-    "database": "paperclip",
-    "username": "paperclip",
-    "password_env": "PAPERCLIP_LOCAL_DB_PASSWORD"
+    "port": 5432,
+    "database": "app",
+    "username": "backup",
+    "password": "change-me"
   },
   "destinations": [
     {
       "host": "redundancy.example.com",
       "port": 5432,
-      "database": "paperclip_redundancy",
-      "username": "paperclip_redundancy",
-      "password_env": "PAPERCLIP_REMOTE_DB_PASSWORD",
+      "database": "app_redundancy",
+      "username": "restore",
+      "password_env": "APP_REDUNDANCY_DB_PASSWORD",
       "restore_strategy": "direct",
       "required_tables": [
-        "companies",
-        "agents",
-        "issues",
-        "heartbeat_runs"
+        "users",
+        "orders",
+        "audit.events"
       ]
     }
   ],
   "logging": {
-    "file": "../logs/paperclip-postgres.log",
+    "file": "../logs/postgres.log",
     "level": "INFO"
   },
   "maintenance": {

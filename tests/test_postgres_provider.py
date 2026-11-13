@@ -16,11 +16,11 @@ TOC = """;
 ;
 215; 3079 16385 EXTENSION - pg_trgm
 4040; 0 0 COMMENT - EXTENSION pg_trgm
-6; 2615 2200 SCHEMA - drizzle paperclip
-220; 1259 16400 TABLE public issues paperclip
-221; 1259 16410 TABLE public agents paperclip
-222; 1259 16420 TABLE drizzle __drizzle_migrations paperclip
-3900; 0 16400 TABLE DATA public issues paperclip
+6; 2615 2200 SCHEMA - drizzle app
+220; 1259 16400 TABLE public issues app
+221; 1259 16410 TABLE public agents app
+222; 1259 16420 TABLE drizzle __drizzle_migrations app
+3900; 0 16400 TABLE DATA public issues app
 """
 
 
@@ -89,28 +89,28 @@ def test_registry_exposes_postgres_aliases() -> None:
 def test_backup_uses_custom_archive_and_keeps_password_out_of_argv(tmp_path: Path) -> None:
     runner = FakeRunner()
     provider = PostgreSQLProvider(runner)  # type: ignore[arg-type]
-    source = DatabaseConfig("127.0.0.1", 5433, "paperclip", "paperclip", "s3:cr\\et")
-    settings = BackupSettings("postgres", tmp_path, "paperclip", True)
+    source = DatabaseConfig("127.0.0.1", 5432, "app", "app", "s3:cr\\et")
+    settings = BackupSettings("postgres", tmp_path, "app", True)
 
     artifact = provider.backup(source, settings, datetime(2026, 11, 12, 23, tzinfo=UTC))
 
     command, output, compressed, program = runner.dumps[0]
-    assert artifact == tmp_path / "paperclip_20261112T230000Z.pgdump"
+    assert artifact == tmp_path / "app_20261112T230000Z.pgdump"
     assert output == artifact
     assert command[0] == "pg_dump" and program == "pg_dump"
     assert "--format=custom" in command and "--compress=6" in command
     assert compressed is False  # pg_dump already compresses the archive
     assert all("s3:cr" not in item for item in command)
-    assert runner.passfiles == ["127.0.0.1:5433:*:paperclip:s3\\:cr\\\\et\n"]
+    assert runner.passfiles == ["127.0.0.1:5432:*:app:s3\\:cr\\\\et\n"]
     assert not _passfile(command).exists()
 
 
 def test_restore_is_atomic_and_skips_extension_entries(app_config, tmp_path: Path) -> None:
     runner = FakeRunner()
     provider = PostgreSQLProvider(runner)  # type: ignore[arg-type]
-    artifact = tmp_path / "paperclip.pgdump"
+    artifact = tmp_path / "app.pgdump"
     artifact.write_bytes(b"PGDMP")
-    destination = replace(app_config.destination, port=5432, database="paperclip_remote")
+    destination = replace(app_config.destination, port=5432, database="app_remote")
 
     provider.restore(destination, artifact)
 
@@ -132,7 +132,7 @@ def test_restore_is_atomic_and_skips_extension_entries(app_config, tmp_path: Pat
 
 
 def test_restore_drops_settings_unknown_to_older_servers(app_config, tmp_path: Path) -> None:
-    artifact = tmp_path / "paperclip.pgdump"
+    artifact = tmp_path / "app.pgdump"
     artifact.write_bytes(b"PGDMP")
 
     old = FakeRunner(server_version="150015")
@@ -159,7 +159,7 @@ def test_restore_refuses_archive_without_tables(app_config, tmp_path: Path) -> N
 def test_restore_refuses_archive_missing_required_tables(app_config, tmp_path: Path) -> None:
     runner = FakeRunner()
     provider = PostgreSQLProvider(runner)  # type: ignore[arg-type]
-    artifact = tmp_path / "paperclip.pgdump"
+    artifact = tmp_path / "app.pgdump"
     artifact.write_bytes(b"PGDMP")
     destination = replace(
         app_config.destination,
@@ -183,7 +183,7 @@ def test_artifact_tables_qualifies_non_public_schemas(tmp_path: Path) -> None:
 def test_database_admin_statements_use_maintenance_database() -> None:
     runner = FakeRunner()
     provider = PostgreSQLProvider(runner)  # type: ignore[arg-type]
-    admin = DatabaseConfig("db", 5432, "paperclip", "postgres", "secret")
+    admin = DatabaseConfig("db", 5432, "app", "postgres", "secret")
 
     provider.create_database(admin, "candidate")
     provider.create_database(admin, "target", if_not_exists=True)
@@ -201,7 +201,7 @@ def test_database_admin_statements_use_maintenance_database() -> None:
 
 def test_objects_returns_schema_qualified_names() -> None:
     provider = PostgreSQLProvider(FakeRunner())  # type: ignore[arg-type]
-    objects = provider.objects(DatabaseConfig("db", 5432, "paperclip", "u", "p"))
+    objects = provider.objects(DatabaseConfig("db", 5432, "app", "u", "p"))
     assert objects == {("issues", "BASE TABLE"), ("drizzle.__drizzle_migrations", "BASE TABLE")}
 
 
